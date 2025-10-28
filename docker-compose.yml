@@ -1,0 +1,167 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql8
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root8888
+      # MYSQL_DATABASE: nacos_config  # 启用以自动创建数据库
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf
+    networks:
+      - backend-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-proot8888",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis:
+    image: redis:7.0
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server /etc/redis/redis.conf
+    volumes:
+      - ./redis/data:/data
+      - ./redis/conf/redis.conf:/etc/redis/redis.conf # 挂载自定义配置文件
+    networks:
+      - backend-network
+
+  nacos:
+    # image: nacos/nacos-server:v3.1.0-slim
+    image: nacos/nacos-server:v3.1.0
+    container_name: nacos-standalone-mysql
+    restart: always
+    environment:
+      - MODE=standalone
+      - SPRING_DATASOURCE_PLATFORM=mysql
+      - MYSQL_SERVICE_HOST=host.docker.internal
+      - MYSQL_SERVICE_PORT=3306
+      - MYSQL_SERVICE_DB_NAME=nacos_config
+      - MYSQL_SERVICE_USER=nacos
+      - MYSQL_SERVICE_PASSWORD=nacos8888
+      - NACOS_AUTH_ENABLE=false
+      - NACOS_AUTH_USERNAME=admin
+      - NACOS_AUTH_PASSWORD=admin8888
+      - NACOS_AUTH_TOKEN=eUtYUjdBRllpdER3TDdmaWVnOHVwSzBNdGMwU0JTY0lhUGxSRjFLSHhuY0NrR2dvTHJvMkotZHJ2R3U3LTAydVFsWGJjUi1PRks2czNjNjBXbW01T2c=
+      - NACOS_AUTH_IDENTITY_KEY=V2ZraXZ2TW5GQndkZ2t5Wm5TaUZnS1lxbWxpY1phbnVUclNlOGdXTGhLZ1ZwOGlIMVZfRFFDOVdMZFZ0b3FHekd2X0VobkFmN2g3eGRGYVduaU92ZHc=
+      - NACOS_AUTH_IDENTITY_VALUE=aHpscHdSLTN5NEEzQzE0VzBURkpRRHFyQXFGSUNpY3NsQlVUSVZoREVlSEpacWpXNUZ1Vzd4am5oLW5YR3JFY29mWWVESHN0X0NnX2RiWkJqZTY0MVE=
+      - NACOS_CORE_API_COMPATIBILITY_CONSOLE_ENABLED=true
+      - JVM_XMS=512m
+      - JVM_XMX=512m
+      - JVM_XMN=256m
+      - TZ=Asia/Shanghai
+      - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+
+      - SERVER_SERVLET_CONTEXT_PATH=/nacos
+    volumes:
+      - ./nacos/logs/:/home/nacos/logs
+      - ./nacos/conf/:/home/nacos/config
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+      - "8080:8080"
+    networks:
+      - backend-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # MinIO - 对象存储服务
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    hostname: book-store-minio
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: minio server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    networks:
+      - backend-network
+
+  # RocketMQ - 消息队列服务
+  namesrv:
+    image: apache/rocketmq:4.9.4
+    container_name: rocketmq-namesrv
+    platform: linux/amd64
+    hostname: rocketmq-namesrv
+    restart: always
+    ports:
+      - "9876:9876"
+    volumes:
+      - ./rocketmq/namesrv/logs/:/root/logs
+      - ./rocketmq/namesrv/conf/:/home/rocketmq/conf
+    command: sh mqnamesrv
+    networks:
+      - backend-network
+
+  broker:
+    image: apache/rocketmq:4.9.4
+    container_name: rocketmq-broker
+    platform: linux/amd64
+    hostname: rocketmq-broker
+    restart: always
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      - ./rocketmq/broker/logs/:/root/logs
+      - ./rocketmq/broker/store/:/root/store
+      - ./rocketmq/broker/conf/broker.conf:/home/rocketmq/conf/broker.conf
+    command: sh mqbroker -c /home/rocketmq/conf/broker.conf
+    depends_on:
+      - namesrv
+    environment:
+      - NAMESRV_ADDR=rocketmq-namesrv:9876
+      - DOCKER_HOST=rocketmq-broker
+    networks:
+      - backend-network
+
+  # RabbitMQ - 消息队列服务
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=rabbitmq
+      - RABBITMQ_DEFAULT_PASS=rabbitmq
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./rabbitmq/db:/var/lib/rabbitmq
+      - ./rabbitmq/logs:/var/log/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - backend-network
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+
+networks:
+  backend-network:
+    name: book-store-network
+    driver: bridge

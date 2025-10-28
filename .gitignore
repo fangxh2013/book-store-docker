@@ -1,0 +1,12 @@
+# Ignore IDE and OS specific files
+.idea
+.DS_Store
+mysql/data/
+nacos/logs/
+nacos/data/
+rabbitmq/logs/
+rabbitmq/db/
+redis/data/
+rocketmq/broker/logs/
+rocketmq/broker/store/
+rocketmq/namesrv/logs/
