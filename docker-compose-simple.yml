@@ -1,0 +1,144 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    platform: linux/amd64
+    container_name: mysql8
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root8888
+      # MYSQL_DATABASE: nacos_config  # 启用以自动创建数据库
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf
+    networks:
+      - backend-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-proot8888",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/amd64
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - ./redis/data:/data
+      - ./redis/conf/redis.conf:/etc/redis/redis.conf
+    networks:
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.3"
+
+  nacos:
+    image: nacos/nacos-server:v2.2.3
+    platform: linux/amd64
+    container_name: nacos-standalone-mysql
+    restart: always
+    environment:
+      - MODE=standalone
+      - SPRING_DATASOURCE_PLATFORM=mysql
+      - MYSQL_SERVICE_HOST=mysql8
+      - MYSQL_SERVICE_PORT=3306
+      - MYSQL_SERVICE_DB_NAME=nacos_config
+      - MYSQL_SERVICE_USER=root
+      - MYSQL_SERVICE_PASSWORD=root8888
+      - NACOS_AUTH_ENABLE=true
+      - NACOS_AUTH_USERNAME=admin
+      - NACOS_AUTH_PASSWORD=admin8888
+    volumes:
+      - ./nacos/logs/:/home/nacos/logs
+      - ./nacos/conf/:/home/nacos/conf
+    ports:
+      - "8848:8848"
+    networks:
+      - backend-network
+    depends_on:
+      - mysql
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # RocketMQ - 消息队列服务
+  namesrv:
+    image: apache/rocketmq:4.9.4
+    platform: linux/amd64
+    container_name: rocketmq-namesrv
+    hostname: rocketmq-namesrv
+    restart: always
+    ports:
+      - "9876:9876"
+    volumes:
+      - ./rocketmq/namesrv/logs/:/root/logs
+      - ./rocketmq/namesrv/conf/namesrv.conf:/home/rocketmq/conf/namesrv.conf
+    command: sh mqnamesrv
+    networks:
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.3"
+
+  broker:
+    image: apache/rocketmq:4.9.4
+    platform: linux/amd64
+    container_name: rocketmq-broker
+    hostname: rocketmq-broker
+    restart: always
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      - ./rocketmq/broker/logs/:/root/logs
+      - ./rocketmq/broker/store/:/root/store
+      - ./rocketmq/broker/conf/broker.conf:/home/rocketmq/conf/broker.conf
+    command: sh mqbroker -n rocketmq-namesrv:9876
+    depends_on:
+      - namesrv
+    environment:
+      - NAMESRV_ADDR=rocketmq-namesrv:9876
+    networks:
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+volumes:
+  mysql_data:
+
+networks:
+  backend-network:
+    name: book-store-network
+    driver: bridge

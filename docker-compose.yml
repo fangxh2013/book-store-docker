@@ -1,10 +1,82 @@
 services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.0
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.10.0
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - backend-network
+    depends_on:
+      - elasticsearch
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.3"
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:7.10.0
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
+    container_name: filebeat
+    user: root
+    volumes:
+      - ./logging/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      # macOS配置 - 注释掉Linux配置并使用适用于macOS的配置
+      - ./nacos/logs:/var/log/containers/nacos:ro
+      - ./mysql/logs:/var/log/containers/mysql:ro
+      - ./redis/data:/var/log/containers/redis:ro
+      - ./rabbitmq/logs:/var/log/containers/rabbitmq:ro
+      - ./rocketmq/broker/logs:/var/log/containers/rocketmq-broker:ro
+      - ./rocketmq/namesrv/logs:/var/log/containers/rocketmq-namesrv:ro
+      # Linux配置 - 如果在Linux系统上运行，请取消注释以下行并注释掉上面的macOS配置
+      # - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - backend-network
+    depends_on:
+      - elasticsearch
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.2"
+
   mysql:
     image: mysql:8.0
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: mysql8
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root8888
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
       # MYSQL_DATABASE: nacos_config  # 启用以自动创建数据库
     ports:
       - "3306:3306"
@@ -12,26 +84,31 @@ services:
       - ./mysql/data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d
       - ./mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf
+      - ./mysql/healthcheck.sh:/healthcheck.sh
+      - ./mysql/logs:/var/log/mysql
     networks:
       - backend-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "root",
-          "-proot8888",
-        ]
+      test: ["CMD", "/healthcheck.sh"]
       interval: 10s
       timeout: 5s
       retries: 3
+    secrets:
+      - mysql_root_password
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7.0
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: redis
     restart: always
     ports:
@@ -40,13 +117,32 @@ services:
       redis-server /etc/redis/redis.conf
     volumes:
       - ./redis/data:/data
-      - ./redis/conf/redis.conf:/etc/redis/redis.conf # 挂载自定义配置文件
+      - ./redis/conf/redis.conf:/etc/redis/redis.conf
+      - ./redis/healthcheck.sh:/healthcheck.sh
     networks:
       - backend-network
+    secrets:
+      - redis_password
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.3"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   nacos:
     # image: nacos/nacos-server:v3.1.0-slim
-    image: nacos/nacos-server:v3.1.0
+    image: nacos/nacos-server:v2.2.3
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: nacos-standalone-mysql
     restart: always
     environment:
@@ -56,37 +152,52 @@ services:
       - MYSQL_SERVICE_PORT=3306
       - MYSQL_SERVICE_DB_NAME=nacos_config
       - MYSQL_SERVICE_USER=nacos
-      - MYSQL_SERVICE_PASSWORD=nacos8888
-      - NACOS_AUTH_ENABLE=false
+      - MYSQL_SERVICE_PASSWORD_FILE=/run/secrets/nacos_db_password
+      - NACOS_AUTH_ENABLE=true
       - NACOS_AUTH_USERNAME=admin
       - NACOS_AUTH_PASSWORD=admin8888
-      - NACOS_AUTH_TOKEN=eUtYUjdBRllpdER3TDdmaWVnOHVwSzBNdGMwU0JTY0lhUGxSRjFLSHhuY0NrR2dvTHJvMkotZHJ2R3U3LTAydVFsWGJjUi1PRks2czNjNjBXbW01T2c=
-      - NACOS_AUTH_IDENTITY_KEY=V2ZraXZ2TW5GQndkZ2t5Wm5TaUZnS1lxbWxpY1phbnVUclNlOGdXTGhLZ1ZwOGlIMVZfRFFDOVdMZFZ0b3FHekd2X0VobkFmN2g3eGRGYVduaU92ZHc=
-      - NACOS_AUTH_IDENTITY_VALUE=aHpscHdSLTN5NEEzQzE0VzBURkpRRHFyQXFGSUNpY3NsQlVUSVZoREVlSEpacWpXNUZ1Vzd4am5oLW5YR3JFY29mWWVESHN0X0NnX2RiWkJqZTY0MVE=
-      - NACOS_CORE_API_COMPATIBILITY_CONSOLE_ENABLED=true
+      - NACOS_AUTH_TOKEN_SECRET_KEY=YzJlZTZjYzYtMzNhMy00N2QzLWI5YjctYjFhZjM3MTYyZGQz
       - JVM_XMS=512m
       - JVM_XMX=512m
       - JVM_XMN=256m
       - TZ=Asia/Shanghai
       - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-
       - SERVER_SERVLET_CONTEXT_PATH=/nacos
     volumes:
       - ./nacos/logs/:/home/nacos/logs
-      - ./nacos/conf/:/home/nacos/config
+      - ./nacos/conf/:/home/nacos/conf
     ports:
       - "8848:8848"
-      - "9848:9848"
-      - "8080:8080"
+      # 注释掉不必要的端口
+      # - "9848:9848"
+      # - "8080:8080"
     networks:
       - backend-network
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    secrets:
+      - nacos_db_password
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # MinIO - 对象存储服务
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2023-05-04T21-44-30Z
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: minio
     hostname: book-store-minio
     restart: always
@@ -98,30 +209,64 @@ services:
     command: minio server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_password
     networks:
       - backend-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    secrets:
+      - minio_password
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.3"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # RocketMQ - 消息队列服务
   namesrv:
     image: apache/rocketmq:4.9.4
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: rocketmq-namesrv
-    platform: linux/amd64
+    # platform: linux/amd64  # macOS配置 - 注释掉Linux特定配置
     hostname: rocketmq-namesrv
     restart: always
     ports:
       - "9876:9876"
     volumes:
       - ./rocketmq/namesrv/logs/:/root/logs
-      - ./rocketmq/namesrv/conf/:/home/rocketmq/conf
+      - ./rocketmq/namesrv/conf/namesrv.conf:/home/rocketmq/conf/namesrv.conf
     command: sh mqnamesrv
     networks:
       - backend-network
+    healthcheck:
+      test: ["CMD", "netstat", "-tlnp", "|", "grep", "9876"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.3"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   broker:
     image: apache/rocketmq:4.9.4
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: rocketmq-broker
-    platform: linux/amd64
+    # platform: linux/amd64  # macOS配置 - 注释掉Linux特定配置
     hostname: rocketmq-broker
     restart: always
     ports:
@@ -139,14 +284,30 @@ services:
       - DOCKER_HOST=rocketmq-broker
     networks:
       - backend-network
+    healthcheck:
+      test: ["CMD", "netstat", "-tlnp", "|", "grep", "10911"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # RabbitMQ - 消息队列服务
   rabbitmq:
     image: rabbitmq:3-management
+    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: rabbitmq
     environment:
       - RABBITMQ_DEFAULT_USER=rabbitmq
-      - RABBITMQ_DEFAULT_PASS=rabbitmq
+      - RABBITMQ_DEFAULT_PASS_FILE=/run/secrets/rabbitmq_password
       - TZ=Asia/Shanghai
     volumes:
       - ./rabbitmq/db:/var/lib/rabbitmq
@@ -157,11 +318,41 @@ services:
     networks:
       - backend-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    secrets:
+      - rabbitmq_password
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.3"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   minio_data:
+  elasticsearch_data:
 
 networks:
   backend-network:
     name: book-store-network
     driver: bridge
+
+secrets:
+  mysql_root_password:
+    file: ./secrets/mysql_root_password
+  nacos_db_password:
+    file: ./secrets/nacos_db_password
+  minio_password:
+    file: ./secrets/minio_password
+  rabbitmq_password:
+    file: ./secrets/rabbitmq_password
+  redis_password:
+    file: ./secrets/redis_password

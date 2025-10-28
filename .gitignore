@@ -1,12 +1,30 @@
 # Ignore IDE and OS specific files
 .idea
 .DS_Store
+
+# Ignore sensitive data and secrets
+secrets/
+.env
+
+# Ignore logs and data directories
 mysql/data/
+mysql/logs/
 nacos/logs/
 nacos/data/
 rabbitmq/logs/
 rabbitmq/db/
 redis/data/
+redis/logs/
 rocketmq/broker/logs/
 rocketmq/broker/store/
 rocketmq/namesrv/logs/
+logging/elk/
+
+# Ignore temporary and cache files
+*.log
+*.tmp
+*.temp
+
+# Ignore ELK data
+elasticsearch/
+kibana/

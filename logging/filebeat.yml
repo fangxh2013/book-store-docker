@@ -1,0 +1,94 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/containers/*.log
+    fields:
+      service: docker
+    fields_under_root: true
+    multiline.pattern: '^\d{4}-\d{2}-\d{2}'
+    multiline.negate: true
+    multiline.match: after
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/containers/mysql/*.log
+    fields:
+      service: mysql
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/containers/nacos/*.log
+    fields:
+      service: nacos
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/containers/redis/*.log
+    fields:
+      service: redis
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/containers/rabbitmq/*.log
+    fields:
+      service: rabbitmq
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/containers/rocketmq-broker/*.log
+    fields:
+      service: rocketmq-broker
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/containers/rocketmq-namesrv/*.log
+    fields:
+      service: rocketmq-namesrv
+    fields_under_root: true
+
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+
+processors:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+
+  - decode_json_fields:
+      fields: ["message"]
+      target: "json"
+      overwrite_keys: true
+
+  - drop_fields:
+      fields: ["agent", "ecs", "input", "log", "host"]
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "filebeat-%{[agent.version]}-%{+yyyy.MM.dd}"
+  bulk_max_size: 1024
+  worker: 2
+
+setup.template.name: "filebeat"
+setup.template.pattern: "filebeat-*"
+setup.kibana.host: "kibana:5601"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
