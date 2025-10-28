@@ -20,6 +20,7 @@
 ├── docker-compose.yml          # 容器编排配置（完整版，包含ELK日志系统）
 ├── docker-compose-simple.yml   # 简化版容器编排配置（仅核心服务）
 ├── README.md                   # 项目说明文档
+├── ELK-BOOK-STORE-TUTORIAL.md  # ELK日志分析系统使用教程
 ├── gen_token.py                # 安全令牌生成脚本
 ├── secrets/                    # 敏感信息存储目录
 ├── mysql/                      # MySQL配置和数据目录
@@ -108,17 +109,16 @@ docker-compose ps
 
 ## 服务访问地址
 
-| 服务                   | 地址                          | 端口          |
-| -------------------- | --------------------------- | ----------- |
-| Nacos                | http://localhost:8848/nacos | 8848        |
-| MySQL                | localhost                   | 3306        |
-| Redis                | localhost                   | 6379        |
-| MinIO                | http://localhost:9001       | 9000/9001   |
-| RocketMQ Name Server | localhost                   | 9876        |
-| RocketMQ Broker      | localhost                   | 10909/10911 |
-| RabbitMQ Management  | http://localhost:15672      | 5672/15672  |
-| Elasticsearch        | http://localhost:9200       | 9200/9300   |
-| Kibana               | http://localhost:5601       | 5601        |
+| 服务 | 访问地址 | 端口 |
+|------|----------|------|
+| Nacos | http://localhost:8848/nacos | 8848 |
+| MySQL | localhost | 3306 |
+| Redis | localhost | 6379 |
+| MinIO Console | http://localhost:9001 | 9000/9001 |
+| RocketMQ Name Server | localhost | 9876 |
+| RabbitMQ Management | http://localhost:15672 | 5672/15672 |
+| Kibana | http://localhost:5601 | 5601 |
+| Elasticsearch | http://localhost:9200 | 9200/9300 |
 
 ## 日志管理
 
@@ -144,6 +144,10 @@ Filebeat会自动收集所有容器的日志并发送到Elasticsearch。
    - 创建新的索引模式，使用`filebeat-*`作为模式
    - 选择`@timestamp`作为时间字段
 3. 在"Analytics" > "Discover"中查看日志数据
+
+### 详细使用教程
+
+请参考 [ELK-BOOK-STORE-TUTORIAL.md](ELK-BOOK-STORE-TUTORIAL.md) 文件获取完整的ELK日志分析系统使用教程。
 
 ### 日志分析建议
 

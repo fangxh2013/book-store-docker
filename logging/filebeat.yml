@@ -58,14 +58,16 @@ filebeat.inputs:
       service: rocketmq-namesrv
     fields_under_root: true
 
-filebeat.autodiscover:
-  providers:
-    - type: docker
-      hints.enabled: true
+# 完全移除Docker自动发现配置，因为我们使用文件日志收集方式
+# filebeat.autodiscover:
+#   providers:
+#     - type: docker
+#       hints.enabled: true
 
 processors:
-  - add_docker_metadata:
-      host: "unix:///var/run/docker.sock"
+  # 移除Docker元数据处理器
+  # - add_docker_metadata:
+  #     host: "unix:///var/run/docker.sock"
 
   - decode_json_fields:
       fields: ["message"]

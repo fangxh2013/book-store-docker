@@ -264,9 +264,8 @@ services:
 
   broker:
     image: apache/rocketmq:4.9.4
-    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
+    platform: linux/amd64
     container_name: rocketmq-broker
-    # platform: linux/amd64  # macOS配置 - 注释掉Linux特定配置
     hostname: rocketmq-broker
     restart: always
     ports:
@@ -275,13 +274,9 @@ services:
     volumes:
       - ./rocketmq/broker/logs/:/root/logs
       - ./rocketmq/broker/store/:/root/store
-      - ./rocketmq/broker/conf/broker.conf:/home/rocketmq/conf/broker.conf
-    command: sh mqbroker -c /home/rocketmq/conf/broker.conf
-    depends_on:
-      - namesrv
+    command: sh mqbroker -n localhost:9876 autoCreateTopicEnable=true
     environment:
-      - NAMESRV_ADDR=rocketmq-namesrv:9876
-      - DOCKER_HOST=rocketmq-broker
+      - JAVA_OPT=-Xms128m -Xmx128m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=128m
     networks:
       - backend-network
     healthcheck:
@@ -292,8 +287,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
-          cpus: "0.5"
+          memory: 256M
+          cpus: "0.2"
     logging:
       driver: "json-file"
       options:
@@ -303,11 +298,10 @@ services:
   # RabbitMQ - 消息队列服务
   rabbitmq:
     image: rabbitmq:3-management
-    platform: linux/amd64 # 添加平台指定以解决ARM64兼容性问题
     container_name: rabbitmq
     environment:
       - RABBITMQ_DEFAULT_USER=rabbitmq
-      - RABBITMQ_DEFAULT_PASS_FILE=/run/secrets/rabbitmq_password
+      - RABBITMQ_DEFAULT_PASS=rabbitmq
       - TZ=Asia/Shanghai
     volumes:
       - ./rabbitmq/db:/var/lib/rabbitmq
@@ -323,8 +317,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    secrets:
-      - rabbitmq_password
     deploy:
       resources:
         limits:
